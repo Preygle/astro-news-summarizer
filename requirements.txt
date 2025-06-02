@@ -1,0 +1,7 @@
+streamlit
+newspaper3k
+beautifulsoup4
+matplotlib
+wordcloud
+nltk
+lxml[html_clean]
