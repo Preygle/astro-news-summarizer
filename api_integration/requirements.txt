@@ -1,0 +1,12 @@
+streamlit
+newspaper3k
+beautifulsoup4
+matplotlib
+wordcloud
+nltk
+transformers
+torch
+openai
+python-dotenv
+requests
+lxml[html_clean]
