@@ -28,12 +28,11 @@ def get_astronomy_articles():
 
     for feed_url in rss_feeds: # iterate through each feed
         
-
         try:
             print(f"Fetching articles from {feed_url}...")  
             feed = feedparser.parse(feed_url) #
 
-            for entry in feed.entries[:2]: #get only the latest 5 articles
+            for entry in feed.entries[:1]: #get only the latest 5 articles
                 article_url = entry.link
 
                 try:
@@ -47,6 +46,7 @@ def get_astronomy_articles():
                         'url': article_url,
                         'published': entry.published if 'published' in entry else None,
                         'content': article.text,
+                        'summary': "",
                         'authors': article.authors if article.authors else [],
                         'source': feed.feed.title
                     }

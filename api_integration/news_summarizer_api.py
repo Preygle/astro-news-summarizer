@@ -1,131 +1,225 @@
-import sys, os
-import json
-import requests
-from dotenv import load_dotenv
-
-
-
+import sys
+import os
 # Add parent directory to Python path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-# Now you can import from parent
+# Import your news scraper
 from news_scrape import get_astronomy_articles
 
+import json
+import requests
+from dotenv import load_dotenv
+import time
+
+# Load environment variables
 load_dotenv()
 
 
-def deepseek_summarizer_requests(article_text, max_tokens=150):
-    """Summarize article using DeepSeek via OpenRouter with requests library"""
+def llama33_summarizer(article_text, max_tokens=200, retries=3):
+    """Summarize article using Llama 3.3 8B Instruct Free model"""
 
     api_key = os.getenv("OPENROUTER_API_KEY")
     if not api_key:
         raise ValueError(
             "OPENROUTER_API_KEY not found in environment variables")
 
-    response = requests.post(
-        url="https://openrouter.ai/api/v1/chat/completions",
-        headers={
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json", 
-        },
-        data=json.dumps({
-            # Removed :free for better reliability
-            "model": "deepseek/deepseek-r1-0528-qwen3-8b",
-            "messages": [
-                {
-                    "role": "system",
-                    "content": "You are an expert astronomy news summarizer. Provide concise, accurate summaries that capture key scientific findings."
+    for attempt in range(retries):
+        try:
+            print(
+                f"🔄 Attempt {attempt + 1}/{retries} - Using Llama 3.3 8B Free")
+
+            response = requests.post(
+                url="https://openrouter.ai/api/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {api_key}",
+                    "Content-Type": "application/json",
                 },
-                {
-                    "role": "user",
-                    "content": f"Please provide a concise 2-3 sentence summary of this astronomy news article:\n\n{article_text[:1500]}"
-                }
-            ],
-            "max_tokens": max_tokens,
-            "temperature": 0.1,
-            "stream": False
-        })
-    )
+                data=json.dumps({
+                    "model": "meta-llama/llama-3.3-8b-instruct:free",
+                    "messages": [
+                        {
+                            "role": "system",
+                            "content": "You are an expert astronomy and space science summarizer. Provide clear, concise summaries that highlight key scientific discoveries and their significance."
+                        },
+                        {
+                            "role": "user",
+                            "content": f"Please summarize this astronomy news article in 2-3 clear sentences, focusing on the main scientific findings:\n\n{article_text[:2000]}"
+                        }
+                    ],
+                    "max_tokens": max_tokens,
+                    "temperature": 0.3,
+                    "top_p": 0.9,
+                    "stream": False
+                }),
+                timeout=30
+            )
 
-    # Handle the response
-    if response.status_code == 200:
-        result = response.json()
-        summary = result["choices"][0]["message"]["content"]
-        return summary.strip()
-    else:
-        print(f"Error: {response.status_code} - {response.text}")
-        return f"Summarization failed: {response.status_code}"
+            print(f"📡 Response Status: {response.status_code}")
+
+            if response.status_code == 200:
+                try:
+                    result = response.json()
+
+                    if "choices" in result and len(result["choices"]) > 0:
+                        content = result["choices"][0]["message"]["content"]
+
+                        if content and content.strip():
+                            print(f"✅ Summary generated successfully")
+                            return content.strip()
+                        else:
+                            print("⚠️ Empty content received")
+                    else:
+                        print("⚠️ No choices in response")
+
+                except json.JSONDecodeError as e:
+                    print(f"❌ JSON decode error: {e}")
+
+            elif response.status_code == 429:
+                print("⏳ Rate limited - waiting 10 seconds...")
+                time.sleep(10)
+                continue
+
+            elif response.status_code == 503:
+                print("⏳ Server busy - waiting 5 seconds...")
+                time.sleep(5)
+                continue
+
+            else:
+                print(f"❌ HTTP Error {response.status_code}: {response.text}")
+
+        except requests.exceptions.Timeout:
+            print("⏳ Request timeout - retrying...")
+
+        except requests.exceptions.RequestException as e:
+            print(f"❌ Request error: {e}")
+
+        # Wait before retry
+        if attempt < retries - 1:
+            print(f"⏳ Waiting 2 seconds before retry...")
+            time.sleep(2)
+
+    return "Summarization failed after multiple attempts"
 
 
-def test_deepseek_summarizer():
-    """Test the DeepSeek summarizer"""
-    test_article = """
-    NASA's James Webb Space Telescope has made a groundbreaking discovery of water vapor 
-    in the atmosphere of exoplanet K2-18 b, located 120 light-years away in the constellation Leo. 
-    This sub-Neptune exoplanet orbits within the habitable zone of its cool dwarf star, 
-    where liquid water could potentially exist on its surface. The detection was made using 
-    Webb's Near-Infrared Spectrograph, which analyzed starlight filtered through the planet's 
-    atmosphere as it passed in front of its host star. Scientists also detected traces of 
-    methane and carbon dioxide, suggesting a hydrogen-rich atmosphere. This discovery represents 
-    a significant step forward in the search for potentially habitable worlds beyond our solar system.
-    """
-
-    print("Testing DeepSeek summarizer with requests...")
-    summary = deepseek_summarizer_requests(test_article)
-    print(f"\nOriginal article length: {len(test_article)} characters")
-    print(f"\nSummary: {summary}")
-
-# Integration with your existing news scraper
 
 
-def summarize_astronomy_news_with_requests():
-    """Summarize astronomy news using DeepSeek via requests"""
 
-    # Import your news scraper (adjust path as needed)
-    import sys
-    import os
-    sys.path.append(os.path.dirname(
-        os.path.dirname(os.path.abspath(__file__))))
+def summarize_astronomy_news():
 
-    from news_scrape import get_astronomy_articles
+    print("🚀 Starting Astronomy News Summarization with Llama 3.3 8B")
+    print("="*70)
 
-    print("Fetching astronomy articles...")
+    # Fetch articles
+    print("\n📡 Fetching astronomy articles...")
     articles = get_astronomy_articles()
 
     if not articles:
-        print("No articles found!")
-        return
+        print("❌ No articles found!")
+        return []
 
-    print(f"\nSummarizing {len(articles)} articles with DeepSeek R1...")
+    print(f"📰 Found {len(articles)} articles to summarize")
+    print("-" * 70)
+
+    summarized_articles = []
 
     for i, article in enumerate(articles, 1):
         try:
-            if article['content'] and len(article['content'].strip()) > 100:
-                print(f"\n--- Article {i}/{len(articles)} ---")
-                print(f"Title: {article['title'][:80]}...")
+            if article.get('content') and len(article['content'].strip()) > 100:
+                print(f"\n🔄 Processing Article {i}/{len(articles)}")
+                print(f"📰 Title: {article['title'][:70]}...")
+                print(
+                    f"📊 Content length: {len(article['content'])} characters")
 
-                # Summarize with DeepSeek
-                summary = deepseek_summarizer_requests(article['content'])
+                # Summarize with Llama 3.3 8B
+                summary = llama33_summarizer(article['content'])
 
-                # Store summary
-                article['summary'] = summary
+                if summary and not summary.startswith("❌"):
+                    # Store summary in article
+                    article['summary'] = summary
+                    summarized_articles.append(article)
 
-                print(f"Summary: {summary}")
-                print("-" * 60)
+                    print(f"✅ Summary: {summary}")
+                else:
+                    print(f"❌ Failed to summarize article {i}")
+
+                print("-" * 50)
+
+                # Rate limiting for free tier
+                time.sleep(1)
 
             else:
-                print(f"Skipping article {i}: Content too short")
+                print(f"⏭️ Skipping article {i}: Content too short")
 
         except Exception as e:
-            print(f"Error processing article {i}: {e}")
+            print(f"❌ Error processing article {i}: {e}")
             continue
 
-    return articles
+    print(
+        f"\n🎉 Successfully summarized {len(summarized_articles)}/{len(articles)} articles!")
+    return summarized_articles
+
+
+def save_summaries(articles, filename="llama33_summaries.json"):
+    """Save summarized articles to JSON file"""
+    try:
+        # Prepare data for JSON serialization
+        save_data = []
+        for article in articles:
+            if 'summary' in article:
+                save_data.append({
+                    'title': article['title'],
+                    'summary': article['summary'],
+                    'url': article.get('url', ''),
+                    'source': article.get('source', ''),
+                    'published': str(article.get('published', '')),
+                    'content_length': len(article.get('content', ''))
+                })
+
+        with open(filename, 'w', encoding='utf-8') as f:
+            json.dump(save_data, f, indent=2, ensure_ascii=False)
+
+        print(f"💾 Saved {len(save_data)} summaries to {filename}")
+
+        # Also create a readable text file
+        text_filename = filename.replace('.json', '.txt')
+        with open(text_filename, 'w', encoding='utf-8') as f:
+            f.write("ASTRONOMY NEWS SUMMARIES\n")
+            f.write("="*50 + "\n\n")
+
+            for i, article in enumerate(save_data, 1):
+                f.write(f"{i}. {article['title']}\n")
+                f.write(f"   Source: {article['source']}\n")
+                f.write(f"   Summary: {article['summary']}\n")
+                f.write(f"   URL: {article['url']}\n")
+                f.write("-" * 50 + "\n\n")
+
+        print(f".txt file saved to {text_filename}")
+
+    except Exception as e:
+        print(f"❌ Error saving summaries: {e}")
 
 
 if __name__ == "__main__":
-    # Test the summarizer
-    test_deepseek_summarizer()
+    print("🌟 Astronomy News Summarizer with Llama 3.3 8B Free")
+    print("="*70)
 
-    # Uncomment to run full summarization
-    # summarize_astronomy_news_with_requests()
+    # Run the summarizer
+    summarized_articles = summarize_astronomy_news()
+
+    if summarized_articles:
+        # Save results
+        save_summaries(summarized_articles)
+
+        # Display summary statistics
+        print(f"\n📊 FINAL STATISTICS:")
+        print("="*40)
+        print(f"Total articles processed: {len(summarized_articles)}")
+
+        print("\n📋 Quick Preview:")
+        for i, article in enumerate(summarized_articles[:3], 1):
+            if 'summary' in article:
+                print(f"{i}. {article['title'][:50]}...")
+                print(f"   {article['summary'][:80]}...")
+                print()
+    else:
+        print("❌ No articles were successfully summarized.")

@@ -4,4 +4,6 @@ beautifulsoup4
 matplotlib
 wordcloud
 nltk
+transformers
+torch
 lxml[html_clean]
