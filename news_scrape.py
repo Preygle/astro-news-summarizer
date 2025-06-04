@@ -32,7 +32,7 @@ def get_astronomy_articles():
             print(f"Fetching articles from {feed_url}...")  
             feed = feedparser.parse(feed_url) #
 
-            for entry in feed.entries[:1]: #get only the latest 5 articles
+            for entry in feed.entries[:2]: #get only the latest 5 articles
                 article_url = entry.link
 
                 try:
@@ -50,6 +50,9 @@ def get_astronomy_articles():
                         'authors': article.authors if article.authors else [],
                         'source': feed.feed.title
                     }
+                    if(article_data['title'] in [a['title'] for a in articles]):
+                        print(f"Skipping duplicate article: {article_data['title']}")
+                        continue
                     articles.append(article_data)
 
                     time.sleep(1)  # Respectful delay between requests
@@ -61,7 +64,7 @@ def get_astronomy_articles():
         except Exception as e:
             print(f"Error fetching feed {feed_url}: {e}")
             continue
-
+        
     return articles
 
 
