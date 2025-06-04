@@ -214,17 +214,12 @@ def summaries_page():
                     st.success(summary)
 
                 # Details
-                col1, col2 = st.columns(2)
-                with col1:
-                    st.write(f"**Source:** {article.get('source', 'Unknown')}")
-                    if article.get('url'):
-                        st.markdown(f"[🔗 Read Full Article]({article['url']})")
+                
+                st.write(f"**Source:** {article.get('source', 'Unknown')}")
+                if article.get('url'):
+                    st.markdown(f"[🔗 Read Full Article]({article['url']})")
 
-                with col2:
-                    st.write(
-                        f"**Fetched:** {article.get('fetched_at', 'N/A')[:16]}")
-                    st.write(
-                        f"**Summarized:** {article.get('summarized_at', 'N/A')[:16]}")
+                
     else:
         st.info("👆 Click 'Generate Summaries' to create summaries from your articles!")
 
