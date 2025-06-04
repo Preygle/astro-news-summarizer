@@ -5,5 +5,5 @@ matplotlib
 wordcloud
 nltk
 transformers
-torch
+plotly
 lxml[html_clean]
