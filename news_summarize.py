@@ -1,134 +1,209 @@
-from transformers import pipeline
-import os, torch
+from transformers import pipeline, AutoTokenizer
+import os
+import json
 from news_scrape import get_astronomy_articles
+from datetime import datetime
 
 
-def setup_local_qwen_model():
-    
-    # Ensure the model directory exists and download the Qwen 2.5 7B model if not already present
-    model_dir = "local_qwen2.5_7b_model"
+def setup_local_model():
+    model_dir = "local_falconsai_model"
 
-    # Check if the model directory exists
     if not os.path.exists(model_dir):
+        print("First time setup: Downloading model...")
+        from transformers import AutoModelForSeq2SeqLM, AutoTokenizer
 
-        from transformers import AutoModelForCausalLM, AutoTokenizer
-        print("First time setup: Downloading Qwen 2.5 7B model...")
-
-        model_name = "Qwen/Qwen2.5-7B-Instruct"
-        model = AutoModelForCausalLM.from_pretrained(
-            model_name,
-            torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32
-        )
-
-        # Load the tokenizer
+        model_name = "Falconsai/text_summarization"
+        model = AutoModelForSeq2SeqLM.from_pretrained(model_name)
         tokenizer = AutoTokenizer.from_pretrained(model_name)
 
-        # Add padding token if it doesn't exist
-        if tokenizer.pad_token is None:
-            tokenizer.pad_token = tokenizer.eos_token
-
-        # Save the model and tokenizer to the local directory
         os.makedirs(model_dir, exist_ok=True)
         model.save_pretrained(model_dir)
         tokenizer.save_pretrained(model_dir)
-        print(f"Qwen 2.5 7B model saved to {model_dir}")
+        print(f"Model saved to {model_dir}")
     else:
-        print("Qwen 2.5 7B model already exists locally!")
+        print("Model already exists locally!")
 
 
-def load_local_qwen_summarizer():
-
-    # Ensure the model is set up
-    model_dir = "local_qwen2.5_7b_model"
-    device = 0 if torch.cuda.is_available() else -1
-
-    # Load the summarization pipeline with the local model
-    summarizer = pipeline(
-        "text-generation",  
-        model=model_dir,
-        tokenizer=model_dir,
-        device=device,
-        torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32
-    )
-
-    return summarizer
+def load_local_summarizer():
+    """Load the local summarization model and tokenizer"""
+    model_dir = "local_falconsai_model"
+    return pipeline("summarization", model=model_dir, tokenizer=model_dir)
 
 
-def summarize_with_qwen(text, summarizer):
-    """Custom summarization function for Qwen 2.5 7B"""
-    # Create a proper prompt for Qwen
-    prompt = f"""<|im_start|>user
-Please provide a concise 2-3 sentence summary of this astronomy news article:
+def smart_chunk_text(text, tokenizer, max_tokens=400):
+    """Intelligently chunk text by sentences to stay under token limit"""
+    sentences = text.split('.')
+    chunks = []
+    current_chunk = ""
 
-{text[:1500]}<|im_end|>
-<|im_start|>assistant
-"""
+    for sentence in sentences:
+        sentence = sentence.strip()
+        if not sentence:
+            continue
 
-    try:
-        # Generate response
-        output = summarizer(
-            prompt,
-            max_new_tokens=150,  # Changed from max_length
-            do_sample=False,
-            temperature=0.1,
-            pad_token_id=summarizer.tokenizer.eos_token_id
-        )
+        test_chunk = current_chunk + ". " + sentence if current_chunk else sentence
+        tokens = tokenizer.tokenize(test_chunk)
 
-        # Extract the summary from generated text
-        generated_text = output[0]['generated_text']
-        summary = generated_text.split("<|im_start|>assistant")[-1].strip()
+        if len(tokens) <= max_tokens:
+            current_chunk = test_chunk
+        else:
+            if current_chunk:
+                chunks.append(current_chunk)
+            current_chunk = sentence
 
-        return summary
+    if current_chunk:
+        chunks.append(current_chunk)
 
-    except Exception as e:
-        print(f"Error in summarization: {e}")
-        return "Summary generation failed."
-    
+    return chunks
 
-def summarize_articles():
 
-    # Setup model locally
-    setup_local_qwen_model()
+def summarize_single_article(article_content, summarizer=None, tokenizer=None):
+    """Summarize a single article - this is what Streamlit should call"""
 
-    # Load summarizer
-    print("Loading Qwen 2.5 7B summarizer...")
-    summarizer = load_local_qwen_summarizer()
+    if summarizer is None or tokenizer is None:
+        setup_local_model()
+        tokenizer = AutoTokenizer.from_pretrained("local_falconsai_model")
+        summarizer = load_local_summarizer()
 
-    # Import articles
-    from news_scrape import get_astronomy_articles
+    # Check if article is short enough to summarize directly
+    tokens = tokenizer.tokenize(article_content)
 
-    print("Fetching articles...")
+    if len(tokens) <= 400:  # Safe margin under 512
+        try:
+            summary = summarizer(
+                article_content,
+                max_length=120,
+                min_length=30,
+                do_sample=False,
+                truncation=True
+            )
+            return summary[0]['summary_text']
+        except Exception as e:
+            print(f"Direct summarization failed: {e}")
+            return "Summary generation failed."
+
+    # Article is too long, chunk it
+    print(f"Article too long ({len(tokens)} tokens), chunking...")
+    chunks = smart_chunk_text(article_content, tokenizer, max_tokens=400)
+
+    if not chunks:
+        return "Could not chunk article for summarization."
+
+    chunk_summaries = []
+
+    for i, chunk in enumerate(chunks):
+        try:
+            print(f"  Summarizing chunk {i+1}/{len(chunks)}")
+            summary = summarizer(
+                chunk,
+                max_length=80,
+                min_length=20,
+                do_sample=False,
+                truncation=True
+            )
+            chunk_summaries.append(summary[0]['summary_text'])
+        except Exception as e:
+            print(f"  Chunk {i+1} failed: {e}")
+            continue
+
+    if not chunk_summaries:
+        return "All chunks failed to summarize."
+
+    # Combine chunk summaries
+    combined_summary = " ".join(chunk_summaries)
+
+    # If combined summary is still too long, summarize it again
+    combined_tokens = tokenizer.tokenize(combined_summary)
+    if len(combined_tokens) > 400:
+        try:
+            print("  Final summarization of combined chunks...")
+            final_summary = summarizer(
+                combined_summary,
+                max_length=120,
+                min_length=40,
+                do_sample=False,
+                truncation=True
+            )
+            return final_summary[0]['summary_text']
+        except Exception as e:
+            print(f"  Final summarization failed: {e}")
+            return combined_summary[:500] + "..."
+
+    return combined_summary
+
+
+def save_articles_to_json(articles, filename="astronomy_summaries_falconsai.json"):
+    """Convert articles dictionary to JSON and save to file"""
+    json_ready_articles = []
+
+    for article in articles:
+        clean_article = {
+            'title': article.get('title', ''),
+            'url': article.get('url', ''),
+            'source': article.get('source', ''),
+            'published': str(article.get('published', '')),
+            'content': article.get('content', ''),
+            'content_length': len(article.get('content', '')),
+            'summary': article.get('summary', 'No summary available'),
+            'processed_at': datetime.now().isoformat()
+        }
+        json_ready_articles.append(clean_article)
+
+    with open(filename, 'w', encoding='utf-8') as f:
+        json.dump(json_ready_articles, f, indent=4, ensure_ascii=False)
+
+    print(f"✅ Saved {len(json_ready_articles)} articles to {filename}")
+    return json_ready_articles
+
+
+def summarize_all_articles():
+    """Main function to summarize all articles - for command line use"""
+    setup_local_model()
+
+    tokenizer = AutoTokenizer.from_pretrained("local_falconsai_model")
+    summarizer = load_local_summarizer()
+
+    print("Loading articles...")
     articles = get_astronomy_articles()
 
     if not articles:
         print("No articles found!")
-        return
+        return []
 
-    print(f"\nSummarizing {len(articles)} articles with Qwen 2.5 7B...")
+    print(f"Found {len(articles)} articles to summarize\n")
 
     for i, article in enumerate(articles, 1):
         try:
-            if article['content'] and len(article['content'].strip()) > 50:
-                # Use the custom Qwen summarization function
-                summary_text = summarize_with_qwen(
-                    article['content'], summarizer)
-
-                print(f"\n--- Article {i} ---")
-                print(f"Title: {article['title']}")
-
-                # Store the summary in the article dictionary
-                articles[i-1]['summary'] = summary_text
-                print(f"Summary: {articles[i-1]['summary']}")
-                print("-" * 50)
-
-
-            else:
+            if not article.get('content') or len(article['content'].strip()) < 50:
                 print(f"Skipping article {i}: Content too short")
+                continue
+
+            print(f"🔄 Processing Article {i}/{len(articles)}")
+            print(f"📰 Title: {article['title']}")
+
+            tokens = tokenizer.tokenize(article['content'])
+            print(
+                f"📊 Content: {len(article['content'])} chars, {len(tokens)} tokens")
+
+            # Summarize the article
+            summary = summarize_single_article(
+                article['content'], summarizer, tokenizer)
+
+            # Store and display summary
+            article['summary'] = summary
+            print(f"✅ Summary: {summary}")
+            print("=" * 60)
 
         except Exception as e:
-            print(f"Error summarizing article {i}: {e}")
+            print(f"❌ Error processing article {i}: {e}")
+            print("=" * 60)
             continue
 
-# Main execution
+    if articles:
+        save_articles_to_json(articles)
+
+    return articles
+
+
 if __name__ == "__main__":
-    summarize_articles()
+    summarize_all_articles()
