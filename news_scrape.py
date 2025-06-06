@@ -20,9 +20,8 @@ def get_astronomy_articles():
         "https://www.nasa.gov/feed/",
         "https://www.nasa.gov/news-release/feed/",
         "https://www.astronomy.com/tags/sky-this-week/feed/",
-        "https://www.astronomy.com/tags/news/feed/",
-        "https://www.space.com/feeds/all"
-    ]
+        "https://www.astronomy.com/tags/news/feed/"
+    ]  # "https://www.space.com/feeds/all" # Space.com feed can be added if needed (does generate a lot of advert content)
 
     articles = []  # List to hold all articles
 
@@ -55,7 +54,7 @@ def get_astronomy_articles():
                         continue
                     articles.append(article_data)
 
-                    time.sleep(1)  # Respectful delay between requests
+                    # time.sleep(1) # Respectful delay between requests
 
                 except Exception as e:
                     print(f"Error processing article {article_url}: {e}")
