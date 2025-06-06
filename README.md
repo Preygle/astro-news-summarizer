@@ -2,12 +2,12 @@
 
 A comprehensive tool for fetching, processing, and summarizing astronomy news articles using AI models.
 
-## Features ✨
+## Features 
 
 - **Web Interface**: Streamlit-based UI for easy interaction
 - **Multiple Summarization Methods**:
-  - Local FalconSAI model (default)
-  - Llama 3.3 8B via OpenRouter API
+  - Local FalconSAI model: Parsing article content in chunks to make it fall under the required token limit. (default)
+  - Llama 3.3 8B via OpenRouter API (under work)
 - **Article Sources**:
   - NASA feeds
   - Astronomy.com
@@ -35,7 +35,7 @@ cp api_integration/.env.example api_integration/.env
 ```
 Edit the `.env` file with your API keys.
 
-## Usage 🚀
+## Usage 
 
 ### Web Interface
 ```bash
@@ -98,6 +98,3 @@ The first run will automatically download and cache the FalconSAI model (~1.5GB)
 4. Push to the branch
 5. Open a pull request
 
-## License 📄
-
-MIT License
