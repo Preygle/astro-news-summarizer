@@ -73,7 +73,6 @@ if __name__ == "__main__":
 
     print(articles[0])
 
-# Preview first article
     # for article in articles:
     #     print(f"\nSample Article:")
     #     print(f"Title: {article['title']}")
