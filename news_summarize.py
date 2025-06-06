@@ -25,17 +25,18 @@ def setup_local_model():
 
 
 def load_local_summarizer():
-    """Load the local summarization model and tokenizer"""
+    # Load the summarization pipeline using the local model
     model_dir = "local_falconsai_model"
     return pipeline("summarization", model=model_dir, tokenizer=model_dir)
 
 
-def smart_chunk_text(text, tokenizer, max_tokens=400):
-    """Intelligently chunk text by sentences to stay under token limit"""
+def chunkify(text, tokenizer, max_tokens=400):
+    # Split text into chunks based on sentence boundaries, ensuring each chunk is under max_tokens
     sentences = text.split('.')
     chunks = []
     current_chunk = ""
 
+    # Iterate through sentences and build chunks
     for sentence in sentences:
         sentence = sentence.strip()
         if not sentence:
@@ -44,13 +45,16 @@ def smart_chunk_text(text, tokenizer, max_tokens=400):
         test_chunk = current_chunk + ". " + sentence if current_chunk else sentence
         tokens = tokenizer.tokenize(test_chunk)
 
+        # If adding this sentence exceeds max_tokens, save current chunk and start a new one
         if len(tokens) <= max_tokens:
             current_chunk = test_chunk
         else:
+            # Save the current chunk if it's not empty
             if current_chunk:
                 chunks.append(current_chunk)
             current_chunk = sentence
 
+    # Add the last chunk if it exists
     if current_chunk:
         chunks.append(current_chunk)
 
@@ -58,7 +62,7 @@ def smart_chunk_text(text, tokenizer, max_tokens=400):
 
 
 def summarize_single_article(article_content, summarizer=None, tokenizer=None):
-    """Summarize a single article - this is what Streamlit should call"""
+    # Summarize a single article content using the provided summarizer and tokenizer.
 
     if summarizer is None or tokenizer is None:
         setup_local_model()
@@ -70,6 +74,7 @@ def summarize_single_article(article_content, summarizer=None, tokenizer=None):
 
     if len(tokens) <= 400:  # Safe margin under 512
         try:
+            # Direct summarization for short articles
             summary = summarizer(
                 article_content,
                 max_length=120,
@@ -84,13 +89,15 @@ def summarize_single_article(article_content, summarizer=None, tokenizer=None):
 
     # Article is too long, chunk it
     print(f"Article too long ({len(tokens)} tokens), chunking...")
-    chunks = smart_chunk_text(article_content, tokenizer, max_tokens=400)
+    # Split into manageable chunks
+    chunks = chunkify(article_content, tokenizer, max_tokens=400)
 
     if not chunks:
         return "Could not chunk article for summarization."
 
     chunk_summaries = []
 
+    # Process each chunk and summarize
     for i, chunk in enumerate(chunks):
         try:
             print(f"  Summarizing chunk {i+1}/{len(chunks)}")
@@ -133,9 +140,10 @@ def summarize_single_article(article_content, summarizer=None, tokenizer=None):
 
 
 def save_articles_to_json(articles, filename="astronomy_summaries_falconsai.json"):
-    """Convert articles dictionary to JSON and save to file"""
+    # Save articles to a JSON file in a structured format
     json_ready_articles = []
 
+    # Ensure the output directory exists
     for article in articles:
         clean_article = {
             'title': article.get('title', ''),
@@ -157,7 +165,7 @@ def save_articles_to_json(articles, filename="astronomy_summaries_falconsai.json
 
 
 def summarize_all_articles():
-    """Main function to summarize all articles - for command line use"""
+    # Main function to summarize all articles
     setup_local_model()
 
     tokenizer = AutoTokenizer.from_pretrained("local_falconsai_model")
@@ -172,6 +180,7 @@ def summarize_all_articles():
 
     print(f"Found {len(articles)} articles to summarize\n")
 
+    # Process each article
     for i, article in enumerate(articles, 1):
         try:
             if not article.get('content') or len(article['content'].strip()) < 50:
@@ -205,5 +214,5 @@ def summarize_all_articles():
     return articles
 
 
-if __name__ == "__main__":
-    summarize_all_articles()
+# if __name__ == "__main__":
+#     summarize_all_articles()
