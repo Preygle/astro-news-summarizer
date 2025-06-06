@@ -12,7 +12,7 @@ SUMMARY_FILE = "astronomy_summaries_falconsai.json"
 
 
 def load_saved_articles():
-    """Load articles from JSON file"""
+    # Load articles from JSON file
     if os.path.exists(ARTICLES_FILE):
         with open(ARTICLES_FILE, "r", encoding="utf-8") as f:
             return json.load(f)
@@ -20,13 +20,13 @@ def load_saved_articles():
 
 
 def save_articles(articles):
-    """Save articles to JSON file"""
+    # Save articles to JSON file
     with open(ARTICLES_FILE, "w", encoding="utf-8") as f:
         json.dump(articles, f, ensure_ascii=False, indent=2)
 
 
 def load_saved_summaries():
-    """Load summaries from JSON file"""
+    # Load summaries from JSON file
     if os.path.exists(SUMMARY_FILE):
         with open(SUMMARY_FILE, "r", encoding="utf-8") as f:
             return json.load(f)
@@ -34,13 +34,13 @@ def load_saved_summaries():
 
 
 def save_summaries(summaries):
-    """Save summaries to JSON file"""
+    # Save summaries to JSON file
     with open(SUMMARY_FILE, "w", encoding="utf-8") as f:
         json.dump(summaries, f, ensure_ascii=False, indent=2)
 
 
 def fetch_articles():
-    """Fetch articles without summarization"""
+    # Fetch articles from RSS feeds and save them to session state"
     with st.spinner("Fetching articles from RSS feeds..."):
         articles = get_astronomy_articles()
 
@@ -48,15 +48,11 @@ def fetch_articles():
         st.error("No articles found!")
         return []
 
-    # Add fetched timestamp
-    for article in articles:
-        article['fetched_at'] = datetime.now().isoformat()
-
     return articles
 
 
 def generate_summaries(articles):
-    """Generate summaries for existing articles"""
+    # Generate summaries for the fetched articles
 
     # Setup model
     setup_local_model()
@@ -68,6 +64,7 @@ def generate_summaries(articles):
     # Process each article with progress bar
     progress_bar = st.progress(0)
 
+    # processing articles
     for i, article in enumerate(articles):
         progress_bar.progress((i + 1) / len(articles))
 
@@ -75,21 +72,18 @@ def generate_summaries(articles):
             try:
                 summary = summarize_single_article(
                     article['content'], summarizer, tokenizer)
-                article['summary'] = summary
-                article['summarized_at'] = datetime.now().isoformat()
+                article['summary'] = summary            
             except Exception as e:
-                article['summary'] = f"Error: {str(e)}"
-                article['summarized_at'] = datetime.now().isoformat()
+                article['summary'] = f"Error: {str(e)}"              
         else:
             article['summary'] = "Content too short"
-            article['summarized_at'] = datetime.now().isoformat()
-
+            
     progress_bar.empty()
     return articles
 
 
 def articles_page():
-    """Page for fetching and displaying articles"""
+    # Page for fetching and displaying articles
     st.header("📰 Fetch Articles")
     st.write("Get the latest astronomy news articles from RSS feeds")
 
@@ -124,7 +118,7 @@ def articles_page():
         st.subheader(f"📄 Articles ({len(st.session_state.articles)})")
 
         for i, article in enumerate(st.session_state.articles, 1):
-            with st.expander(f"{i}. {article['title'][:80]}..."):
+            with st.expander(f"{i}. {article['title'][:250]}..."):
 
                 # Title
                 st.subheader(article['title'])
@@ -135,24 +129,23 @@ def articles_page():
                 st.text_area("", content[:500] + "..." if len(content) > 500 else content,
                              height=150, disabled=True, key=f"content_{i}")
 
-                # Details
+                # Source, published date, and URL
                 st.write(f"**Source:** {article.get('source', 'Unknown')}")
                 published = article.get('published', 'Unknown')
 
-
-                if published != 'Unknown':
-                        
+                if published != 'Unknown':                        
                     short_date = published[:-5]
                     st.write(f"**Published:** {short_date}")
 
                 if article.get('url'):
                     st.markdown(f"[🔗 Read Full Article]({article['url']})")
+
     else:
         st.info("👆 Click 'Fetch New Articles' to get started!")
 
 
 def summaries_page():
-    """Page for generating and displaying summaries"""
+    # Page for generating and displaying summaries
     st.header("🤖 Generate Summaries")
     st.write("Create AI-powered summaries from your fetched articles")
 
@@ -214,23 +207,29 @@ def summaries_page():
                     st.success(summary)
 
                 # Details
-                
                 st.write(f"**Source:** {article.get('source', 'Unknown')}")
+
+                published = article.get('published', 'Unknown')
+                if published != 'Unknown':
+                    short_date = published[:-5]
+                    st.write(f"**Published:** {short_date}")
+
                 if article.get('url'):
                     st.markdown(f"[🔗 Read Full Article]({article['url']})")
-
-                
+         
     else:
         st.info("👆 Click 'Generate Summaries' to create summaries from your articles!")
 
 
 def main():
+    # Streamlit app configuration
     st.set_page_config(
         page_title="Astronomy News Summarizer",
         page_icon="🔭",
         layout="wide"
     )
 
+    # Title and description
     st.title("🔭 Astronomy News Summarizer")
     st.write("Fetch astronomy news and generate AI-powered summaries")
 
@@ -245,6 +244,6 @@ def main():
     elif page == "🤖 Summaries":
         summaries_page()
 
-
+# Run the app
 if __name__ == "__main__":
     main()
